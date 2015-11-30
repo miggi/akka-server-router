@@ -15,14 +15,24 @@ object AkkaLoader extends App with DBProvider {
   val loader = system.actorOf(Props[Loader], name = "Loader")
   val subscriber = system.actorOf(Props[Subscriber], name = "Subscriber")
   val conn = connection()
+  var frameCounter = 0
 
   while (true) {
     val delay = loadDelay(conn)
 
     loader ! "FIRE"
 
-    loader ! "REFRESH"
+    refreshIfNeeded(delay)
     Thread.sleep(delay)
+  }
+
+  def refreshIfNeeded(delay: Int) = {
+    frameCounter += 1
+
+    if (frameCounter % 3 == 0) {
+      println(s"Refreshing workers [$frameCounter] ...")
+      loader ! "REFRESH"
+    }
   }
 }
 
@@ -42,15 +52,20 @@ class Loader extends Actor with DBProvider {
 
     if (routees.nonEmpty) {
       val routeesGroup = new RoundRobinGroup(routees).props()
-      if(remoteRouter !=null) {
-        // TODO: need suspend and refresh!
-       }
-      remoteRouter = context.actorOf(routeesGroup, "router")
+
+      if (remoteRouter != null) {
+        context.stop(remoteRouter)
+      }
+
+      remoteRouter = context.actorOf(routeesGroup)
+      println("Updated Router: " + remoteRouter.path)
     }
   }
 
   def receive = {
-    case "FIRE" => if (remoteRouter != null) remoteRouter ! generateHash()
+    case "FIRE" =>{
+      if (remoteRouter != null)  remoteRouter ! generateHash()}
+
     case "REFRESH" => refreshRRGroup()
 
     case msg: String =>
@@ -77,6 +92,13 @@ class Subscriber extends Actor with DBProvider {
     case msg: String => subscribe(msg)
   }
 
+}
+
+class DeathWatchActor extends Actor {
+
+  def receive = {
+    case Terminated(ref) =>
+  }
 }
 
 
