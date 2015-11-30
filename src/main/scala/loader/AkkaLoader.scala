@@ -50,7 +50,7 @@ class Loader extends Actor with DBProvider {
   def refreshRRGroup() = {
 
     val workers = loadWorkers()
-  val routees = for (host <- workers) yield s"akka.tcp://Workers@$host:5555/user/RemoteWorker"
+    val routees = for (host <- workers) yield s"akka.tcp://Workers@$host:5555/user/RemoteWorker"
 //    val routees = for (host <- workers) yield s"akka.tcp://Workers@127.0.0.1:5555/user/RemoteWorker"
 
     if (routees.nonEmpty) {
@@ -94,7 +94,6 @@ class Subscriber extends Actor with DBProvider {
 
   private def register(host: String) = {
     val conn = connection()
-
     val rsExisting = conn
       .createStatement()
       .executeQuery(s"$selectWorkers WHERE host = '$host'")
@@ -106,13 +105,6 @@ class Subscriber extends Actor with DBProvider {
     }
   }
 
-}
-
-class DeathWatchActor extends Actor {
-
-  def receive = {
-    case Terminated(ref) =>
-  }
 }
 
 
