@@ -17,6 +17,8 @@ object AkkaLoader extends App with DBProvider {
   val conn = connection()
   var frameCounter = 0
 
+  loader ! "REFRESH"
+
   while (true) {
     val delay = loadDelay(conn)
 
@@ -30,7 +32,6 @@ object AkkaLoader extends App with DBProvider {
     frameCounter += 1
 
     if (frameCounter % 3 == 0) {
-      println(s"Refreshing workers [$frameCounter] ...")
       loader ! "REFRESH"
     }
   }
@@ -47,15 +48,14 @@ class Loader extends Actor with DBProvider {
   }
 
   def refreshRRGroup() = {
+
     val workers = loadWorkers()
-    val routees = for (host <- workers) yield s"akka.tcp://Workers@$host:5555/user/RemoteWorker"
+  val routees = for (host <- workers) yield s"akka.tcp://Workers@$host:5555/user/RemoteWorker"
+//    val routees = for (host <- workers) yield s"akka.tcp://Workers@127.0.0.1:5555/user/RemoteWorker"
 
     if (routees.nonEmpty) {
+      println ("Routees to refresh= " + routees)
       val routeesGroup = new RoundRobinGroup(routees).props()
-
-      if (remoteRouter != null) {
-        context.stop(remoteRouter)
-      }
 
       remoteRouter = context.actorOf(routeesGroup)
       println("Updated Router: " + remoteRouter.path)
@@ -75,13 +75,13 @@ class Loader extends Actor with DBProvider {
 
 class Subscriber extends Actor with DBProvider {
 
+  import loader.SqlStatements._
+
   private def subscribe(host: String) = {
     println(s"Got subscription! Registering = $host")
 
     try {
-      connection()
-        .createStatement()
-        .executeUpdate(s"INSERT INTO public.workers (host) VALUES ('$host');")
+      register(host)
     } catch {
       case e: Exception =>
         e.printStackTrace()
@@ -90,6 +90,20 @@ class Subscriber extends Actor with DBProvider {
 
   def receive = {
     case msg: String => subscribe(msg)
+  }
+
+  private def register(host: String) = {
+    val conn = connection()
+
+    val rsExisting = conn
+      .createStatement()
+      .executeQuery(s"$selectWorkers WHERE host = '$host'")
+
+    if (!rsExisting.first()) {
+      conn
+        .createStatement()
+        .executeUpdate(s"INSERT INTO public.workers (host) VALUES ('$host');")
+    }
   }
 
 }
