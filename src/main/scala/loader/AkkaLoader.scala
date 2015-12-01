@@ -30,14 +30,15 @@ object AkkaLoader extends App with DBProvider {
 
   def refreshIfNeeded(delay: Int) = {
     frameCounter += 1
-
-    if (frameCounter % 3 == 0) {
+    if (frameCounter % 5 == 0) {
       loader ! "REFRESH"
     }
   }
 }
 
 class Loader extends Actor with DBProvider {
+
+  import loader.SqlStatements._
 
   var remoteRouter: ActorRef = null
 
@@ -51,7 +52,6 @@ class Loader extends Actor with DBProvider {
 
     val workers = loadWorkers()
     val routees = for (host <- workers) yield s"akka.tcp://Workers@$host:5555/user/RemoteWorker"
-//        val routees = for (host <- workers) yield s"akka.tcp://Workers@127.0.0.1:5555/user/RemoteWorker"
 
     if (routees.nonEmpty) {
       println("Routees to refresh= " + routees)
@@ -59,6 +59,11 @@ class Loader extends Actor with DBProvider {
 
       remoteRouter = context.actorOf(routeesGroup)
       println("Updated Router: " + remoteRouter.path)
+      connection().createStatement().executeUpdate(cleanWorkersSql)
+
+    } else if (remoteRouter != null){
+      context.stop(remoteRouter)
+      remoteRouter = null
     }
   }
 
@@ -67,8 +72,7 @@ class Loader extends Actor with DBProvider {
       if (remoteRouter != null) remoteRouter ! generateHash()
     }
     case "REFRESH" => refreshRRGroup()
-    case msg: String =>
-      println(s"AKKA Loader: '$msg'")
+    case msg: String => println(s"AKKA Loader: '$msg'")
   }
 }
 
