@@ -51,10 +51,10 @@ class Loader extends Actor with DBProvider {
 
     val workers = loadWorkers()
     val routees = for (host <- workers) yield s"akka.tcp://Workers@$host:5555/user/RemoteWorker"
-//    val routees = for (host <- workers) yield s"akka.tcp://Workers@127.0.0.1:5555/user/RemoteWorker"
+//        val routees = for (host <- workers) yield s"akka.tcp://Workers@127.0.0.1:5555/user/RemoteWorker"
 
     if (routees.nonEmpty) {
-      println ("Routees to refresh= " + routees)
+      println("Routees to refresh= " + routees)
       val routeesGroup = new RoundRobinGroup(routees).props()
 
       remoteRouter = context.actorOf(routeesGroup)
@@ -63,11 +63,10 @@ class Loader extends Actor with DBProvider {
   }
 
   def receive = {
-    case "FIRE" =>{
-      if (remoteRouter != null)  remoteRouter ! generateHash()}
-
+    case "FIRE" => {
+      if (remoteRouter != null) remoteRouter ! generateHash()
+    }
     case "REFRESH" => refreshRRGroup()
-
     case msg: String =>
       println(s"AKKA Loader: '$msg'")
   }
@@ -83,8 +82,7 @@ class Subscriber extends Actor with DBProvider {
     try {
       register(host)
     } catch {
-      case e: Exception =>
-        e.printStackTrace()
+      case e: Exception => e.printStackTrace()
     }
   }
 
