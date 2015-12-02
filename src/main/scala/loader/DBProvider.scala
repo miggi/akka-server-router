@@ -13,19 +13,18 @@ trait DBProvider {
   val dbUrl = "jdbc:h2:~/test"
   val user = "sa"
   val password = ""
+  val conn = connection()
 
   def startH2() = {
     val tcp = Server.createTcpServer().start
-    val web = Server.createWebServer().start
+    val web = Server.createWebServer("-webAllowOthers").start
 
     println(s"Started H2 Server TCP = ${tcp.getURL}")
     println(s"Started H2 Server WEB = ${web.getURL}")
 
-    val conn = connection()
     List(dropWorkersSql, createWorkersSql, dropDelaySql, createDelaySql, initDelaySql)
       .foreach((sql: String) => conn.createStatement().execute(sql))
 
-    conn.close()
   }
 
   def loadDelay(connection: Connection) = {
@@ -37,7 +36,6 @@ trait DBProvider {
   }
 
   def loadWorkers(): List[String] = {
-    val conn = connection()
     var workers = ArrayBuffer.empty[String]
 
     try {
@@ -51,8 +49,6 @@ trait DBProvider {
       }
     } catch {
       case e: Exception => e.printStackTrace()
-    } finally {
-      conn.close()
     }
     workers.toList
   }

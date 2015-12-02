@@ -1,5 +1,7 @@
 package loader
 
+import java.util.concurrent.{TimeUnit, Executors}
+
 import akka.actor._
 import akka.routing.RoundRobinGroup
 import org.apache.commons.codec.binary.Base64
@@ -11,28 +13,27 @@ object AkkaLoader extends App with DBProvider {
   startH2()
 
   implicit val system = ActorSystem("AkkaLoader")
-
   val loader = system.actorOf(Props[Loader], name = "Loader")
+  val refreshWorkersSeconds = 5
+
+  val refreshCmd = "REFRESH"
+  val startCmd   = "START"
+
+  val scheduler = Executors
+    .newSingleThreadScheduledExecutor()
+    .scheduleAtFixedRate(
+      new RefreshTask(loader), refreshWorkersSeconds, refreshWorkersSeconds, TimeUnit.SECONDS)
+
   val subscriber = system.actorOf(Props[Subscriber], name = "Subscriber")
-  val conn = connection()
   var frameCounter = 0
 
-  loader ! "REFRESH"
+  loader ! refreshCmd
 
   while (true) {
     val delay = loadDelay(conn)
+    loader ! startCmd
 
-    loader ! "FIRE"
-
-    refreshIfNeeded(delay)
     Thread.sleep(delay)
-  }
-
-  def refreshIfNeeded(delay: Int) = {
-    frameCounter += 1
-    if (frameCounter % 5 == 0) {
-      loader ! "REFRESH"
-    }
   }
 }
 
@@ -49,7 +50,6 @@ class Loader extends Actor with DBProvider {
   }
 
   def refreshRRGroup() = {
-
     val workers = loadWorkers()
     val routees = for (host <- workers) yield s"akka.tcp://Workers@$host:5555/user/RemoteWorker"
 
@@ -59,19 +59,21 @@ class Loader extends Actor with DBProvider {
 
       remoteRouter = context.actorOf(routeesGroup)
       println("Updated Router: " + remoteRouter.path)
-      connection().createStatement().executeUpdate(cleanWorkersSql)
+      conn
+        .createStatement()
+        .executeUpdate(cleanWorkersSql)
 
-    } else if (remoteRouter != null){
+    } else if (remoteRouter != null) {
       context.stop(remoteRouter)
       remoteRouter = null
     }
   }
 
   def receive = {
-    case "FIRE" => {
+    case startCmd => {
       if (remoteRouter != null) remoteRouter ! generateHash()
     }
-    case "REFRESH" => refreshRRGroup()
+    case refreshCmd => refreshRRGroup()
     case msg: String => println(s"AKKA Loader: '$msg'")
   }
 }
@@ -107,6 +109,13 @@ class Subscriber extends Actor with DBProvider {
     }
   }
 
+}
+
+class RefreshTask(actor: ActorRef) extends Runnable {
+  override def run(): Unit = {
+    println("Sheduled refresh ...")
+    actor ! AkkaLoader.refreshCmd
+  }
 }
 
 
