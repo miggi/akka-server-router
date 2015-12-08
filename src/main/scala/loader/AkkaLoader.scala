@@ -14,18 +14,17 @@ object AkkaLoader extends App with DBProvider {
 
   implicit val system = ActorSystem("AkkaLoader")
   val loader = system.actorOf(Props[Loader], name = "Loader")
-  val refreshWorkersSeconds = 5
 
+  val refreshWorkersSecs = 5
   val refreshCmd = "REFRESH"
   val startCmd   = "START"
 
   val scheduler = Executors
     .newSingleThreadScheduledExecutor()
     .scheduleAtFixedRate(
-      new RefreshTask(loader), refreshWorkersSeconds, refreshWorkersSeconds, TimeUnit.SECONDS)
+      new RefreshTask(loader), refreshWorkersSecs, refreshWorkersSecs, TimeUnit.SECONDS)
 
   val subscriber = system.actorOf(Props[Subscriber], name = "Subscriber")
-  var frameCounter = 0
 
   loader ! refreshCmd
 
@@ -43,18 +42,25 @@ class Loader extends Actor with DBProvider {
 
   var remoteRouter: ActorRef = null
 
-  def generateHash() = {
-    val buffer = new Array[Byte](1024) //TODO: parametrize in DB
+  def generateRandomHash() = {
+    val random = new Random()
+    val factor = random.nextDouble()
+    val maxBaseSize = 2048
+    val bufferSize =  (maxBaseSize  * factor).toInt
+    println (s"Propagating HASH with buffer size = $bufferSize")
+
+    val buffer = new Array[Byte](bufferSize)
+
     Random.nextBytes(buffer)
     Base64.encodeBase64String(buffer)
   }
 
-  def refreshRRGroup() = {
+  def refreshRoundRobinGroup() = {
     val workers = loadWorkers()
     val routees = for (host <- workers) yield s"akka.tcp://Workers@$host:5555/user/RemoteWorker"
 
     if (routees.nonEmpty) {
-      println("Routees to refresh= " + routees)
+      println("Routees to refresh = " + routees)
       val routeesGroup = new RoundRobinGroup(routees).props()
 
       remoteRouter = context.actorOf(routeesGroup)
@@ -71,9 +77,9 @@ class Loader extends Actor with DBProvider {
 
   def receive = {
     case startCmd => {
-      if (remoteRouter != null) remoteRouter ! generateHash()
+      if (remoteRouter != null) remoteRouter ! generateRandomHash()
     }
-    case refreshCmd => refreshRRGroup()
+    case refreshCmd => refreshRoundRobinGroup()
     case msg: String => println(s"AKKA Loader: '$msg'")
   }
 }
@@ -113,7 +119,7 @@ class Subscriber extends Actor with DBProvider {
 
 class RefreshTask(actor: ActorRef) extends Runnable {
   override def run(): Unit = {
-    println("Sheduled refresh ...")
+    println("Scheduled refresh ...")
     actor ! AkkaLoader.refreshCmd
   }
 }
