@@ -1,6 +1,6 @@
 package loader
 
-import java.util.concurrent.{TimeUnit, Executors}
+import java.util.concurrent.{ThreadLocalRandom, TimeUnit, Executors}
 
 import akka.actor._
 import akka.routing.RoundRobinGroup
@@ -17,7 +17,6 @@ object AkkaLoader extends App with DBProvider {
 
   val refreshWorkersSecs = 5
   val refreshCmd = "REFRESH"
-  val startCmd   = "START"
 
   val scheduler = Executors
     .newSingleThreadScheduledExecutor()
@@ -30,8 +29,7 @@ object AkkaLoader extends App with DBProvider {
 
   while (true) {
     val delay = loadDelay(conn)
-    loader ! startCmd
-
+    loader ! "START"
     Thread.sleep(delay)
   }
 }
@@ -43,10 +41,11 @@ class Loader extends Actor with DBProvider {
   var remoteRouter: ActorRef = null
 
   def generateRandomHash() = {
-    val random = new Random()
-    val factor = random.nextDouble()
-    val maxBaseSize = 2048
-    val bufferSize =  (maxBaseSize  * factor).toInt
+    val minBound = 1024
+    val maxBound = 2048
+    val randomized = ThreadLocalRandom.current().nextDouble(minBound, maxBound)
+
+    val bufferSize =  randomized.toInt
     println (s"Propagating HASH with buffer size = $bufferSize")
 
     val buffer = new Array[Byte](bufferSize)
@@ -76,10 +75,10 @@ class Loader extends Actor with DBProvider {
   }
 
   def receive = {
-    case startCmd => {
+    case "START" =>
       if (remoteRouter != null) remoteRouter ! generateRandomHash()
-    }
-    case refreshCmd => refreshRoundRobinGroup()
+
+    case "REFRESH" => refreshRoundRobinGroup()
     case msg: String => println(s"AKKA Loader: '$msg'")
   }
 }
@@ -120,7 +119,7 @@ class Subscriber extends Actor with DBProvider {
 class RefreshTask(actor: ActorRef) extends Runnable {
   override def run(): Unit = {
     println("Scheduled refresh ...")
-    actor ! AkkaLoader.refreshCmd
+    actor ! "REFRESH"
   }
 }
 
